@@ -125,3 +125,29 @@ const SPW=[
 SPW.forEach((w,i)=>w.k=[i%5,(i+2)%5]);
 // 防具: 頭・胴・足 × 14テーマ。見た目は土台の形+テーマの飾り
 const DEC=[['l','M8 9 Q12 13 16 9'],['l','M12 7 L12 17'],['l','M8 8 L11 12 L8 16 M16 8 L13 12 L16 16'],['k','M12 8 L15 12 L12 16 L9 12 Z'],['l','M8 8 L10 11 M16 8 L14 11 M10 15 L14 15'],['l','M7 10 Q12 6 17 10 M7 14 Q12 10 17 14'],['k','M12 7 Q15 11 12 16 Q9 11 12 7 Z'],['l','M12 6 L12 18 M7 9 L17 15 M17 9 L7 15'],['k','M13 6 L9 13 L12 13 L10 19 L15 11 L12 11 Z'],['k','M7 11 Q12 6 17 11 Q12 16 7 11 Z'],['l','M12 6 L12 18 M8 10 L16 10'],['l','M7 14 L10 8 L12 12 L14 8 L17
+// ---- 鍛冶場 ----
+const CATS=[['w','武器'],['s','特殊'],['h','頭'],['b','胴'],['f','足']];
+const isA=c=>c=='h'||c=='b'||c=='f';
+const catList=c=>c=='w'?WPN:c=='s'?SPW:THEMES;
+const catTiers=c=>c=='s'?[4,5,6]:[1,2,3,4,5,6,7,8];
+const ckey=(c,v,t)=>c=='w'?v+':'+t:c+':'+v+':'+t;
+const owned=(c,key)=>isA(c)?U.d.ao[key]:U.d.wp[key];
+let CS={c:'w',v:0,t:1},GT=0,GR=[];
+function needs(c,v,t){
+  const rs=(k,n)=>({k,t:t-1,n});
+  if(c=='w')return[rs(WPN[v].k[0],2+t),rs(WPN[v].k[1],1+t)];
+  if(c=='s')return[{sp:1,i:v,ti:t-4,n:3},rs(SPW[v].k[0],2+t),rs(SPW[v].k[1],1+t)];
+  const k=THEMES[v].k,x=c=='b'?1:0;return[rs(k[0],2+t+x),rs(k[1],1+t+x)];
+}
+const have=(q,i)=>q.sp?U.d.sm[q.i][q.ti]:U.d.inv[q.k][q.t]+U.d.st[i][q.k][q.t];
+const qlab=(q,i)=>{const h=have(q,i);return`<span style="color:${h>=q.n?'#7bd66b':'#ff5d73'}">${q.sp?SPW[q.i].mn:R[q.k].n} <span style="color:${TC[q.sp?q.ti+3:q.t]}">${ROM[q.sp?q.ti+3:q.t]}</span> ${h}/${q.n}</span>`};
+const tbtn=(on,col)=>on?`background:${col};color:#14121f;border-color:${col}`:`color:${col};border-color:${col}`;
+function forgeTabs(i,cur){return`<div class=wr style="justify-content:center">${[['craftScr','作る'],['gachaScr','ガチャ'],['enchScr','エンチャント']].map(([f,n])=>`<button class="card2${f==cur?' on':''}" onclick="${f}(${i})">${n}</button>`).join('')}</div>`}
+const runeTabs=(i,fn)=>`<div class=wr style="justify-content:center">${[0,1,2].map(x=>`<button class=card2 style="${tbtn(x==GT,TC[x+3])}" onclick="GT=${x};${fn}(${i})">ルーン${ROM[x+3]} ${U.d.rn[x]}</button>`).join('')}</div>`;
+const backBtns=i=>`<button class=card onclick="town(${i})">倉庫へ</button><button class=card onclick="resume()">街に戻る</button>`;
+function craftScr(i){
+  const c=CS.c,list=catList(c),ts=catTiers(c);if(!ts.includes(CS.t))CS.t=ts[0];if(CS.v>=list.length)CS.v=0;
+  const key=ckey(c,CS.v,CS.t),own=owned(c,key),tc=TC[CS.t-1],rq=needs(c,CS.v,CS.t),ok=rq.every(q=>have(q,i)>=q.n),it=itemInfo(key);
+  const ic=(j)=>isA(c)?armIco(c,j):list[j].ico;
+  const stats=it.kind=='a'?stTxt(armStats(c,CS.v,CS.t)):'威力 '+(it.b.d*wtm(CS.t)).toFixed(1)+' ／ 連射 '+(1/it.b.r).toFixed(1)+'回/秒 ／ 弾 '+it.b.m+'本 ／ 貫通 '+(it.b.p>=99?'全て':it.b.p)+(it.b.desc?'<br>'+it.b.desc:'');
+  show(`<h1>鍛冶場</h1>${forgeTabs(i,'craftScr')}<div class=wr style="justify-content:center">${CATS.map(([x,n])=>`<button class="card2${x==c?' on':''}" onclick="CS.c='${x}';CS.v=0;craftScr(${i})">${n}</button>`).join('')}</div><div class=wr style="justify-content:center">${list.map((x,j)=>`<button class="card2${j==CS.v?' on':''}" onclick="CS.v=${j};craftScr(${i})">${wicon2(ic(j),CS.t,18)} ${x.n}</button>`).join('')}</div><div class=wr style="justify-content:center">${ts.map(j=>`<button class=card2 style="${tbtn(j==CS.t,TC[j-1])}" onclick="CS.t=${j};craftScr(${i})">${ROM[j-1]}${owned(c,ckey(c,CS.v,j))?'●':''}</button>`).join('')}</div><div class=b style="border-color:${tc}">${wicon2(it.ico,CS.t,56)}<br><b style="font-size:17px;color:${tc}">${it.n} ${ROM[CS.t-1]}</b><br>${stats}<br><br>必要な素材<br>${rq.map(q=>qlab(q,i)).join('　')}</div><b
