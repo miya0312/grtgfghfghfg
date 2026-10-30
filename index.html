@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PULSE｜図形ローグライク</title>
+<style>
+:root{--bg:#14121f;--fg:#f2efe6;--a:#ffd23f;--b:#3ee6c3;--c:#ff5d73}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;overflow:hidden;touch-action:none;user-select:none}
+canvas{display:block;width:100%;height:100%}
+#ui{position:fixed;inset:0;pointer-events:none}
+#hud{position:absolute;top:calc(10px + env(safe-area-inset-top));left:12px;right:12px;font-size:15px;display:flex;justify-content:space-between}
+#t3{position:absolute;top:calc(34px + env(safe-area-inset-top));left:12px;font-size:13px}
+#btns{display:none;position:absolute;top:calc(34px + env(safe-area-inset-top));right:12px;gap:6px;pointer-events:auto}
+#btns button{background:#201d33;color:var(--fg);border:1px solid var(--b);border-radius:4px;padding:5px 9px;font-size:13px}
+#xp{position:absolute;left:0;right:0;bottom:0;height:6px;background:#ffffff18}
+#xpf{height:100%;width:0;background:var(--b)}
+#panel{position:absolute;inset:0;display:none;background:#14121ff2;pointer-events:auto;padding:16px;overflow:auto;touch-action:pan-y;box-sizing:border-box}
+.w{margin:auto;width:100%;max-width:420px;display:flex;flex-direction:column;gap:10px;align-items:center}
+h1{margin:0;font-size:26px;color:var(--a);text-align:center}
+.m{text-align:center;line-height:1.7;font-size:14px}
+.b{width:100%;box-sizing:border-box;border:1px solid #ffffff30;border-radius:6px;padding:10px;text-align:center;line-height:1.8;font-size:14px}
+input{width:100%;box-sizing:border-box;padding:12px;font-size:16px;background:#201d33;color:var(--fg);border:2px solid #ffffff40;border-radius:6px;user-select:text}
+.card{width:100%;box-sizing:border-box;padding:13px 16px;border:2px solid var(--b);background:#201d33;color:var(--fg);font-size:14px;text-align:left;cursor:pointer;border-radius:6px}
+.card:hover,.card:focus-visible{background:var(--b);color:#14121f;outline:none}
+.card b{display:block;font-size:17px;margin-bottom:2px}
+.g{width:100%;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.g>:last-child:nth-child(odd){grid-column:span 2}
+.tile{border:2px solid;border-radius:8px;padding:16px 8px;color:var(--fg);font-size:13px;line-height:1.6;cursor:pointer}
+.tile b{display:block;font-size:18px}
+.path{width:100%;display:flex;flex-direction:column;gap:6px;border-left:3px dashed #ffffff40;padding-left:14px;box-sizing:border-box}
+.node{border:2px solid;background:#201d33;color:var(--fg);border-radius:20px;padding:9px 14px;font-size:15px;text-align:left;cursor:pointer}
+.node small{display:block;font-size:11px;opacity:.7}
+.node.town{background:var(--a);color:#14121f;font-weight:bold}
+.node:disabled{opacity:.4;cursor:default}
+.row{width:100%;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;justify-content:space-between;font-size:14px;border-bottom:1px solid #ffffff20;padding-bottom:8px}
+.row button{padding:6px 8px;background:#201d33;color:var(--fg);border:1px solid var(--b);border-radius:4px;font-size:13px;cursor:pointer}
+.wb{width:100%;box-sizing:border-box;border:2px solid;border-radius:8px;padding:8px 10px}
+.wr{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-top:6px;font-size:12px}
+.wr i{opacity:.5;font-style:normal}
+.wn{border:1px solid;border-radius:12px;padding:3px 8px}
+.wn.cur{background:var(--a);color:#14121f;font-weight:bold}
+.wn.un{opacity:.45}
+.it{width:100%;border-collapse:collapse;font-size:13px;text-align:center}.it th,.it td{border:1px solid #ffffff25;padding:7px 1px}.it th{color:var(--a)}
+.card2{padding:6px 10px;background:#201d33;color:var(--fg);border:1px solid var(--b);border-radius:4px;font-size:13px;cursor:pointer}.card2.on{background:var(--b);color:#14121f}.card:disabled,.row button:disabled{opacity:.45;cursor:default}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <div id="hud"><span id="t1"></span><span id="t2"></span></div>
+  <div id="t3"></div>
+  <div id="btns"><button onclick="wmap()">地図</button><button onclick="invScr()">持ち物</button><button onclick="menuScr()">メニュー</button></div>
+  <div id="xp"><div id="xpf"></div></div>
+  <div id="panel"></div>
+</div>
+<script>
+const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d');
+let W,H,DPR;
+function resize(){DPR=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0)}
+addEventListener('resize',resize);resize();
+const esc=s=>s.replace(/[&<>"']/g,c=>'&#'+c.charCodeAt(0)+';');
+
+// ---- 音 ----
+let AC;
+function snd(f,d=.08,type='square',v=.06,slide=0){
+  try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();
+  const o=AC.createOscillator(),g=AC.createGain();o.type=type;o.frequency.value=f;
+  if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(30,f+slide),AC.currentTime+d);
+  g.gain.value=v;g.gain.exponentialRampToValueAtTime(.001,AC.currentTime+d);
+  o.connect(g).connect(AC.destination);o.start();o.stop(AC.currentTime+d)}catch(e){}
+}
+
+// ---- 入力 ----
+const keys={};let mx=null,my=null;
+addEventListener('keydown',e=>{if(e.target.tagName!=='INPUT')keys[e.key.toLowerCase()]=1});
+addEventListener('keyup',e=>keys[e.key.toLowerCase()]=0);
+cv.addEventListener('pointerdown',e=>{mx=e.clientX;my=e.clientY});
+cv.addEventListener('pointermove',e=>{if(mx!==null){mx=e.clientX;my=e.clientY}});
+addEventListener('pointerup',()=>{mx=null});
+
+// ---- データ定義 ----
+const R=[{n:'繊維',c:'#7bd66b'},{n:'木材',c:'#c08a50'},{n:'石材',c:'#a5abb8'},{n:'鉱石',c:'#5db7ff'},{n:'皮',c:'#e8895a'}];
+const MB=[{n:'ツタもぐら',hp:1.5,s:80,r:11},{n:'木人',hp:2.5,s:65,r:13},{n:'岩ゴーレム',hp:5,s:50,r:17},{n:'鉱石むし',hp:2,s:95,r:10},{n:'野獣',hp:2,s:105,r:12}];
+const S=[3,4,6,5,0];
+// 資源のティア I〜VIII(奥の地域ほど高い)
+const ROM=['I','II','III','IV','V','VI','VII','VIII'];
+const TC=['#aeb4bd','#5fd068','#4aa8ff','#b07cff','#ff9a3c','#ff5d6c','#3ee6e0','#ffd23f'];
+const z8=()=>[0,0,0,0,0,0,0,0],mig=a=>a.map(x=>typeof x==='number'?[x,0,0,0,0,0,0,0]:x);
+const BI=[
+{n:'翠の森',bg:'#10261a',c:'#4fc36b',m:[0,1,4],t:'ミドリ村',ti:2,r:['森の入口','苔むす小道','ミドリ村','大樹の根元','木漏れ日の谷','深緑の奥地']},
+{n:'風の平原',bg:'#26281a',c:'#c9d46a',m:[0,4,2],t:'カゼ町',ti:0,r:['カゼ町','風車の丘','麦畑','野うさぎ原','旅人の街道']},
+{n:'灰の山岳',bg:'#1f2128',c:'#9aa3b8',m:[2,3,4],t:'ハガネ砦',ti:3,r:['麓の岩場','崩れた坑道','石切り場','ハガネ砦','氷の尾根','竜の背','雲上の頂']},
+{n:'朱の砂漠',bg:'#2d2014',c:'#e5a24f',m:[0,2,3],t:'オアシス街',ti:1,r:['砂丘の端','オアシス街','枯れ谷','蜃気楼の原','古代遺跡','焼け岩の荒野']},
+{n:'霧の沼地',bg:'#16232a',c:'#6bb7b0',m:[0,1,3],t:'ヌマ港',ti:4,r:['霧の入口','朽ち木の道','毒の浅瀬','苔の島','ヌマ港','蛍の湿原']}
+];
+// 武器: k=必要な素材(種類)。作るティアと同じティアの素材が必要。ティアが高いほど威力が上がる
+const WPN=[
+ {n:'弓',k:[1,0],d:1,r:.5,m:1,p:0,sp:520,life:1.2,sz:4,c:'#ffd23f',f:700,w:'square',desc:'バランス型',ico:[['s','M9 2 Q22 12 9 22'],['s','M9 2 L9 22'],['s','M2 12 L21 12 M21 12 L17 9 M21 12 L17 15']]},
+ {n:'投石器',k:[2,0],d:1.9,r:.85,m:1,p:1,sp:420,life:1.3,sz:7,c:'#a5abb8',f:300,w:'triangle',desc:'重い一撃・1体貫通',ico:[['s','M2 21 L10 13 M10 13 L7 4 M10 13 L15 6'],['f','M22 14 a4 4 0 1 1 -8 0 a4 4 0 1 1 8 0']]},
+ {n:'魔導杖',k:[3,1],d:.7,r:.28,m:1,p:0,sp:620,life:1.1,sz:3,c:'#5db7ff',f:900,w:'sine',desc:'超高速連射',ico:[['s','M2 12 L16 12'],['f','M16 12 L20 7 L24 12 L20 17 Z'],['s','M6 6 L6 6.5 M9 18 L9 18.5']]},
+ {n:'双短剣',k:[4,3],d:.85,r:.45,m:2,p:0,sp:480,life:.55,sz:4,c:'#e8895a',f:600,w:'sawtooth',desc:'2本同時・近距離',ico:[['f','M5 7 L22 5 L9 10 Z'],['f','M5 17 L22 19 L9 14 Z'],['s','M6 4 L6 10 M6 14 L6 20']]},
+ {n:'大槌',k:[2,3],d:3.2,r:1.3,m:1,p:2,sp:360,life:1,sz:10,c:'#c08a50',f:200,w:'square',desc:'遅いが2体貫通',ico:[['s','M2 12 L16 12'],['f','M15 4 L23 4 L23 20 L15 20 Z']]}
+];
+const wtm=t=>1+.6*(t-1);
+const SU={hp:1,dmg:.05,rate:.05,spd:.05,mag:.25,regen:.5,inv:.15};
+const SL={hp:'HP',dmg:'攻撃',rate:'連射',spd:'速さ',mag:'吸引',regen:'再生',inv:'無敵'};
+// 特殊武器14種(ルーンのガチャで出る特殊素材から作る。ティアIV〜VI)
+const SPW=[
+ {n:'炎の杖',mn:'炎の核',c:'#ff6a3d',d:.9,r:.5,m:1,p:0,sp:480,life:1.1,sz:6,f:260,w:'sawtooth',bs:7,aoe:55,burn:.6,desc:'着弾で爆発して燃やす',ico:[['s','M2 12 L15 12'],['f','M15 12 Q16 7 20 5 Q19 9 23 12 Q19 15 20 19 Q16 17 15 12 Z']]},
+ {n:'氷結の弓',mn:'氷の核',c:'#8fe3ff',d:1,r:.55,m:1,p:1,sp:540,life:1.2,sz:4,f:800,w:'triangle',bs:0,slow:.45,desc:'当てた敵を鈍足にする',ico:[['s','M9 2 Q22 12 9 22'],['s','M9 2 L9 22'],['f','M3 12 L8 9 L13 12 L8 15 Z']]},
+ {n:'雷の杖',mn:'雷の核',c:'#ffe34d',d:.8,r:.45,m:1,p:0,sp:600,life:1.1,sz:4,f:1000,w:'square',bs:2,chain:3,desc:'雷が近くの敵3体に連鎖',ico:[['s','M2 12 L11 12'],['f','M14 3 L22 3 L17 10 L21 10 L12 21 L15 12 L11 12 Z']]},
+ {n:'毒牙の短剣',mn:'毒の核',c:'#8fe05a',d:.7,r:.3,m:2,p:0,sp:480,life:.6,sz:4,f:500,w:'sawtooth',bs:3,burn:.5,desc:'2本同時・毒で継続ダメージ',ico:[['f','M4 9 L22 12 L4 15 Z'],['s','M6 7 L6 17'],['f','M18 17 Q21 22 16 22 Q14 19 18 17 Z']]},
+ {n:'風の輪',mn:'風の核',c:'#b8f0d8',d:1.2,r:.7,m:1,p:9,sp:420,life:1.6,sz:9,f:400,w:'sine',bs:5,boom:1,desc:'投げると戻ってくる輪',ico:[['s','M21 12 a9 9 0 1 0 -18 0 a9 9 0 1 0 18 0'],['f','M12 7 L15 12 L12 17 L9 12 Z']]},
+ {n:'聖なる弓',mn:'聖の核',c:'#fff3b0',d:1.1,r:.5,m:1,p:0,sp:500,life:1.5,sz:4,f:900,w:'triangle',bs:0,hom:4.5,desc:'敵を追いかける矢',ico:[['s','M9 2 Q22 12 9 22'],['s','M9 2 L9 22'],['s','M15 8 L15 16 M11 12 L19 12']]},
+ {n:'影の鎌',mn:'影の核',c:'#9a7bd6',d:1,r:.65,m:1,p:2,sp:440,life:.9,sz:9,f:240,w:'sawtooth',bs:4,crit:[.3,3],desc:'30%で3倍ダメージ',ico:[['s','M2 20 L14 8'],['f','M14 8 Q22 4 22 14 Q18 8 14 8 Z']]},
+ {n:'吸血の牙',mn:'血の核',c:'#d6335a',d:.9,r:.45,m:1,p:0,sp:520,life:1,sz:5,f:350,w:'square',bs:3,leech:.05,desc:'当てると稀にHP回復',ico:[['f','M5 4 L12 4 L8.5 20 Z'],['f','M13 4 L20 4 L16.5 20 Z']]},
+ {n:'爆裂砲',mn:'爆の核',c:'#ff9a3c',d:2.2,r:1.2,m:1,p:0,sp:400,life:1.1,sz:9,f:150,w:'sawtooth',bs:7,aoe:95,desc:'大爆発で周囲を巻き込む',ico:[['f','M3 8 L18 8 L18 16 L3 16 Z'],['f','M18 6 L23 6 L23 18 L18 18 Z'],['s','M6 18 L6 22 M12 18 L12 22']]},
+ {n:'星散弾',mn:'星の核',c:'#ffd6f5',d:.55,r:.8,m:5,p:0,sp:520,life:.8,sz:4,sa:.13,f:600,w:'square',bs:8,desc:'5発の星を扇状に撃つ',ico:[['f','M12 2 L14.5 9 L22 9.5 L16 14 L18 22 L12 17.5 L6 22 L8 14 L2 9.5 L9.5 9 Z']]},
+ {n:'光線銃',mn:'光の核',c:'#7fffd4',d:.9,r:.6,m:1,p:99,sp:1500,life:.3,sz:3,f:1200,w:'sine',bs:6,desc:'一直線の敵をすべて貫く',ico:[['f','M2 9 L16 9 L16 15 L2 15 Z'],['s','M16 12 L24 12'],['s','M5 15 L4 21']]},
+ {n:'竜の吐息',mn:'竜の核',c:'#ff7043',d:.4,r:.1,m:1,p:1,sp:420,life:.3,sz:5,jit:.3,f:180,w:'sawtooth',bs:7,burn:.4,desc:'超高速の炎・近距離',ico:[['f','M3 8 Q12 2 22 10 L16 12 L22 15 Q12 22 3 16 Z']]},
+ {n:'重力の珠',mn:'重の核',c:'#7a5cff',d:1,r:.9,m:1,p:99,sp:260,life:2,sz:10,f:120,w:'sine',bs:2,pull:140,desc:'敵を引き寄せながら進む',ico:[['s','M22 12 a10 10 0 1 0 -20 0 a10 10 0 1 0 20 0'],['f','M16 12 a4 4 0 1 0 -8 0 a4 4 0 1 0 8 0']]},
+ {n:'震撃の槌',mn:'震の核',c:'#c9a46a',d:2,r:1,m:1,p:3,sp:300,life:.5,sz:14,f:110,w:'square',bs:4,knock:3,aoe:70,desc:'強烈なノックバックと衝撃',ico:[['s','M2 18 L12 12'],['f','M10 3 L22 3 L22 15 L10 15 Z']]}
+];
+SPW.forEach((w,i)=>w.k=[i%5,(i+2)%5]);
+// 防具: 頭・胴・足 × 14テーマ。見た目は土台の形+テーマの飾り
+const DEC=[['l','M8 9 Q12 13 16 9'],['l','M12 7 L12 17'],['l','M8 8 L11 12 L8 16 M16 8 L13 12 L16 16'],['k','M12 8 L15 12 L12 16 L9 12 Z'],['l','M8 8 L10 11 M16 8 L14 11 M10 15 L14 15'],['l','M7 10 Q12 6 17 10 M7 14 Q12 10 17 14'],['k','M12 7 Q15 11 12 16 Q9 11 12 7 Z'],['l','M12 6 L12 18 M7 9 L17 15 M17 9 L7 15'],['k','M13 6 L9 13 L12 13 L10 19 L15 11 L12 11 Z'],['k','M7 11 Q12 6 17 11 Q12 16 7 11 Z'],['l','M12 6 L12 18 M8 10 L16 10'],['l','M7 14 L10 8 L12 12 L14 8 L17 14'],['k','M12 6 L13.5 10.5 L18 11 L14.5 14 L15.5 18.5 L12 16 L8.5 18.5 L9.5 14 L6 11 L10.5 10.5 Z'],['l','M8 8 L16 16 M16 8 L8 16']];
+const BASE={h:'M5 17 Q5 5 12 5 Q19 5 19 17 L19 20 L5 20 Z',b:'M6 4 L18 4 L21 9 L18 11 L18 21 L6 21 L6 11 L3 9 Z',f:'M6 3 L13 3 L13 13 L21 16 L21 21 L6 21 Z'};
+const THEMES=[{n:'ツタ',s:['regen'],k:[0,1]},{n:'樹皮',s:['hp'],k:[1,0]},{n:'岩',s:['hp','inv'],k:[2,0]},{n:'鉱石',s:['dmg'],k:[3,2]},{n:'獣皮',s:['spd'],k:[4,0]},{n:'風',s:['spd','rate'],k:[0,4]},{n:'炎',s:['dmg','rate'],k:[3,1]},{n:'氷',s:['inv'],k:[2,3]},{n:'雷',s:['rate'],k:[3,4]},{n:'影',s:['dmg','spd'],k:[4,3]},{n:'聖',s:['regen','hp'],k:[1,2]},{n:'竜',s:['hp','dmg'],k:[2,4]},{n:'星',s:['mag','rate'],k:[3,0]},{n:'覇王',s:['hp','dmg','spd'],k:[4,1]}];
+const SLN={h:'兜',b:'鎧',f:'靴'},SLOT={h:{dmg:1},b:{hp:1},f:{spd:1}};
+const armIco=(sl,th)=>[['f',BASE[sl]],DEC[th]];
+function armStats(sl,th,t,b=0){
+  const A=1+.5*(t-1),st={},add=(s,m)=>st[s]=(st[s]||0)+SU[s]*m*A;
+  for(const s in SLOT[sl])add(s,SLOT[sl][s]);THEMES[th].s.forEach(s=>add(s,1));
+  for(const s in st){st[s]*=1+b;if(s=='hp')st[s]=Math.max(1,Math.round(st[s]))}
+  return st;
+}
+const stTxt=st=>Object.entries(st).map(([k,v])=>SL[k]+' +'+(k=='hp'?v:k=='regen'?v.toFixed(1)+'/10秒':k=='inv'?v.toFixed(2)+'秒':Math.round(v*100)+'%')).join(' ／ ');
+// 装備品の情報(キー: 通常武器 'w:t' / 特殊 's:i:t' / 防具 'h|b|f:i:t')
+function itemInfo(key){
+  const a=key.split(':');
+  if(a[0]=='s'){const b=SPW[+a[1]];return{n:b.n,ico:b.ico,t:+a[2],kind:'s',b}}
+  if(SLN[a[0]]){const th=+a[1];return{n:THEMES[th].n+'の'+SLN[a[0]],ico:armIco(a[0],th),t:+a[2],kind:'a',sl:a[0],th}}
+  const b=WPN[+a[0]];return{n:b.n,ico:b.ico,t:+a[1],kind:'w',b};
+}
+const P2m=new WeakMap();
+const p2=ico=>{let v=P2m.get(ico);if(!v){v=ico.map(([m,d])=>[m,new Path2D(d)]);P2m.set(ico,v)}return v};
+const wicon2=(ico,t,sz=28)=>{const c=TC[t-1];return`<svg width=${sz} height=${sz} viewBox="0 0 24 24" style="vertical-align:middle;${t==8?`filter:drop-shadow(0 0 3px ${TC[7]})`:''}">`+ico.map(([m,d])=>m=='f'?`<path d="${d}" fill="${c}" stroke="#14121f" stroke-width="1.2"/>`:m=='k'?`<path d="${d}" fill="#14121f"/>`:m=='l'?`<path d="${d}" fill="none" stroke="#14121f" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`:`<path d="${d}" fill="none" stroke="#14121f" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="${c}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`).join('')+'</svg>'};
+const wicon=(w,t,sz)=>wicon2(WPN[w].ico,t,sz);
+const gem=(c,sz=22)=>`<svg width=${sz} height=${sz} viewBox="0 0 24 24" style="vertical-align:middle"><path d="M12 2 L21 10 L12 22 L3 10 Z" fill="${c}" stroke="#14121f" stroke-width="1.2"/></svg>`;
+const enb=k=>(U.d.en[k]||{}).b||0,enn=k=>(U.d.en[k]||{}).n||0;
+const wlab=(key,sz=20)=>{const it=itemInfo(key),n=enn(key);return wicon2(it.ico,it.t,sz)+` <span style="color:${TC[it.t-1]};font-weight:bold">${it.n} ${ROM[it.t-1]}</span>`+(n?` <span style="color:#ffd23f">+${n}</span>`:'')};
+function itemTxt(k){const it=itemInfo(k);if(it.kind=='a')return stTxt(armStats(it.sl,it.th,it.t,enb(k)));return'威力 '+(it.b.d*wtm(it.t)*(1+enb(k))).toFixed(1)+(it.kind=='s'?' ／ '+it.b.desc:'')}
+const cmpK=(a,b)=>itemInfo(b).t-itemInfo(a).t||a.localeCompare(b);
+function curW(){
+  const k=U.d.eq,a=k.split(':'),s=a[0]=='s',t=+(s?a[2]:a[1]),i=+(s?a[1]:a[0]),b=s?SPW[i]:WPN[i];
+  return{...b,dmg:b.d*wtm(t)*(1+enb(k)),t,i,isS:s,bs:b.bs===undefined?i:b.bs};
+}
+// 防具の合計ボーナス
+let GEAR={hp:0,dmg:0,rate:0,spd:0,mag:0,regen:0,inv:0};
+function gear(){
+  const g={hp:0,dmg:0,rate:0,spd:0,mag:0,regen:0,inv:0};
+  for(const sl of['h','b','f']){const key=U.d.ar[sl];if(!key)continue;const a=key.split(':').map(Number),st=armStats(sl,a[1],a[2],enb(key));for(const s in st)g[s]+=st[s]}
+  g.spd=Math.min(g.spd,.8);GEAR=g;
+  if(P){const nm=5+g.hp;if(nm>P.max)P.hp+=nm-P.max;P.max=nm;if(P.hp>P.max)P.hp=P.max}
+}
+const dif=(i,j)=>1+j*.2+i*.3;
+// 全地域を1本の道に並べる(隣同士が門でつながる。バイオームの端も隣のバイオームへ)
+const RG=[];BI.forEach((b,bi)=>b.r.forEach((n,ri)=>RG.push({bi,ri,n})));
+const isTown=id=>BI[RG[id].bi].ti==RG[id].ri;
+const mk=s=>{s=(s*7919+13)>>>0;const f=()=>(s=(Math.imul(s,1664525)+1013904223)>>>0)/4294967296;f();f();f();return f};
+// ---- アカウント(このブラウザ内に保存) ----
+const KEY='pulse_v2';
+let DB;try{DB=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+DB=DB||{u:{},cur:''};let U=null;
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){}};
+setInterval(()=>{if(U)save()},5000);addEventListener('pagehide',save);
+const hash=s=>{let h=5381;for(const c of s)h=((h<<5)+h+c.charCodeAt(0))>>>0;return h.toString(36)};
+const inv=a=>R.map((r,i)=>`<span style="color:${r.c}">${r.n} ${a[i]}</span>`).join('　');
+const setU=u=>{U=u;const d=u.d;d.vis=d.vis||[0];d.last=d.last??2;d.wp=d.wp||{'0:1':1};d.eq=d.eq||'0:1';d.rn=d.rn||[0,0,0];d.sm=d.sm||SPW.map(()=>[0,0,0]);d.en=d.en||{};d.ao=d.ao||{};d.ar=d.ar||{h:null,b:null,f:null};d.inv=mig(d.inv);d.st=d.st.map(mig)};
+
+// ---- 画面 ----
+let state='menu',inRun=false;
+function show(h){state='menu';const p=$('panel');p.style.display='flex';p.innerHTML='<div class="w">'+h+'</div>';$('btns').style.display='none'}
+function resume(){$('panel').style.display='none';$('btns').style.display='flex';state='play'}
+function login(msg=''){show(`<h1>PULSE</h1><div class=m>${msg||'アカウントでログイン'}</div><input id=nm placeholder="ユーザー名" maxlength=12 autocomplete=username><input id=pw type=password placeholder="パスワード" autocomplete=current-password><button class=card onclick="auth(0)"><b>ログイン</b></button><button class=card onclick="auth(1)"><b>新規登録</b></button><div class=m style="font-size:12px;opacity:.7">データはこの端末のブラウザに保存されます</div>`)}
+function auth(reg){
+  const n=$('nm').value.trim(),p=$('pw').value;if(!n||!p)return login('名前とパスワードを入れてください');
+  const u=DB.u[n];
+  if(reg){if(u)return login('その名前はすでに使われています');DB.u[n]={pw:hash(p),d:{inv:R.map(z8),st:BI.map(()=>R.map(z8)),best:0,vis:[2],last:2,wp:{'0:1':1},eq:'0:1'}}}
+  else if(!u||u.pw!==hash(p))return login('名前かパスワードが違います');
+  DB.cur=n;setU(DB.u[n]);save();snd(600,.1);run(U.d.last);
+}
+function logout(){save();inRun=false;DB.cur='';U=null;save();login()}
+function menuScr(){const d=U.d;show(`<h1>メニュー</h1><div class=m>${esc(DB.cur)}さん<br>ベスト生存 ${d.best.toFixed(1)}秒<br>復活・開始地点: ${RG[d.last].n}</div><button class=card onclick="resume()"><b>ゲームに戻る</b></button><button class=card onclick="logout()">ログアウト</button>`)}
+function equip(k){const it=itemInfo(k);if(it.kind=='a')U.d.ar[it.sl]=k;else U.d.eq=k;gear();save();snd(800,.06,'triangle');invScr()}
+function unequip(sl){U.d.ar[sl]=null;gear();save();invScr()}
+function invScr(){
+  const d=U.d,c=d.inv;
+  const rows=R.map((r,k)=>`<tr><th style="color:${r.c}">${r.n}</th>`+c[k].map(n=>`<td style="${n?`background:${r.c}33;font-weight:bold`:'opacity:.35'}">${n}</td>`).join('')+'</tr>').join('');
+  const row=(k,on)=>`<div class=row><span>${wlab(k,26)}</span><span style="font-size:12px;flex:1 1 100%">${itemTxt(k)}</span><button ${on?'disabled':''} onclick="equip('${k}')">${on?'装備中':'装備'}</button></div>`;
+  const ws=Object.keys(d.wp).sort(cmpK).map(k=>row(k,k==d.eq)).join('');
+  const as=Object.keys(d.ao).sort(cmpK).map(k=>row(k,d.ar[itemInfo(k).sl]==k)).join('');
+  const sms=[];SPW.forEach((w,i)=>d.sm[i].forEach((n,j)=>{if(n)sms.push(`<span style="white-space:nowrap;display:inline-block;margin:2px 6px">${gem(w.c,18)} ${w.mn} <span style="color:${TC[j+3]}">${ROM[j+3]}</span> ×${n}</span>`)}));
+  const eqa=['h','b','f'].map(sl=>`<div class=row><span>${{h:'頭',b:'胴',f:'足'}[sl]}: ${d.ar[sl]?wlab(d.ar[sl],22):'なし'}</span>${d.ar[sl]?`<button onclick="unequip('${sl}')">外す</button>`:''}</div>`).join('');
+  show(`<h1>持ち物</h1><table class=it><tr><th></th>${ROM.map((x,j)=>`<th style="color:${TC[j]}">${x}</th>`).join('')}</tr>${rows}</table><div class=b>ルーン　${d.rn.map((n,j)=>`<span style="color:${TC[j+3]};font-weight:bold">${ROM[j+3]} ${n}</span>`).join('　')}<br>${sms.length?sms.join(''):'<span style="opacity:.6;font-size:12px">特殊素材なし(鍛冶場のガチャで入手)</span>'}</div><div class=b style="text-align:left"><b>装備中の防具</b>${eqa}</div><div class=b style="text-align:left"><b>武器</b>(装備中: ${wlab(d.eq,22)})</div>${ws}<div class=b style="text-align:left"><b>防具</b></div>${as||'<div class=m style="font-size:12px;opacity:.7">防具は鍛冶場で作れます</div>'}<button class=card onclick="resume()">閉じる</button>`);
+}
+// ---- 大陸の地図(1つの大陸に5つのバイオーム) ----
+// 各バイオームの道すじ(0〜1の座標)。地域はこの線上に等間隔で並ぶ
+const WPATH=[
+ [[.14,.74],[.17,.60],[.13,.47],[.20,.37],[.27,.31]],
+ [[.32,.24],[.40,.14],[.50,.19],[.57,.27]],
+ [[.63,.22],[.70,.14],[.79,.13],[.86,.21],[.84,.32],[.77,.39]],
+ [[.78,.47],[.88,.55],[.84,.66],[.74,.60],[.72,.72],[.68,.80]],
+ [[.60,.84],[.50,.86],[.40,.80],[.31,.84],[.26,.74],[.34,.64]]
+];
+function along(p,n){
+  const L=[0];for(let i=1;i<p.length;i++)L.push(L[i-1]+Math.hypot(p[i][0]-p[i-1][0],p[i][1]-p[i-1][1]));
+  const T=L[L.length-1],o=[];
+  for(let k=0;k<n;k++){const d=T*k/(n-1);let i=1;while(i<p.length-1&&L[i]<d)i++;const t=(d-L[i-1])/(L[i]-L[i-1]||1);o.push([p[i-1][0]+(p[i][0]-p[i-1][0])*t,p[i-1][1]+(p[i][1]-p[i-1][1])*t])}
+  return o;
+}
+const WP=WPATH.flatMap((p,i)=>along(p,BI[i].r.length));
+const SD=BI.map((b,i)=>{const o=BI.slice(0,i).reduce((s,x)=>s+x.r.length,0),a=WP.slice(o,o+b.r.length);return[a.reduce((s,q)=>s+q[0],0)/a.length,a.reduce((s,q)=>s+q[1],0)/a.length]});
+// 地域どうしの接続(すべて行き来できる)。順番の道に加えて、近い地域どうしも門で結ぶ
+const EDGES=[],NB=WP.map(()=>[]);
+for(let i=0;i<WP.length;i++)for(let j=i+1;j<WP.length;j++){
+  if(j==i+1||Math.hypot(WP[i][0]-WP[j][0],WP[i][1]-WP[j][1])<.16){EDGES.push([i,j]);NB[i].push(j);NB[j].push(i)}
+}
+// 地域ごとのティア: 最初の街(ミドリ村)から遠いほど高い(I〜VIII)
+const TIER=(()=>{const D=WP.map(()=>-1),q=[2];D[2]=0;while(q.length){const a=q.shift();for(const b of NB[a])if(D[b]<0){D[b]=D[a]+1;q.push(b)}}
+  const m=Math.max(...D)||1;return D.map(d=>1+Math.round(Math.max(0,d)/m*7))})();
+const GC={};
+function gatesOf(id){
+  if(GC[id])return GC[id];
+  const r=mk(id),g=[];
+  NB[id].forEach(to=>{let p,n=0;do{p={to,x:.08+.84*r(),y:.1+.8*r()}}while(n++<40&&g.some(q=>Math.hypot(q.x-p.x,(q.y-p.y)*.75)<.26));g.push(p)});
+  return GC[id]=g;
+}
+const gcol=(id,to)=>RG[to].bi!==RG[id].bi?BI[RG[to].bi].c:'#ffd23f';
+const gts=()=>CUR.dg?[]:gatesOf(CUR.id);
+// ダンジョン(ティアIV・V・VI)。入口は各ティアの地域にある紫の門
+const DGNM=['朽ち木の地下墓所','風車の古井戸','旅人の迷宮'];
+const DGN=[4,5,6].map(t=>RG.findIndex((r,i)=>!isTown(i)&&TIER[i]==t));
+const DPC={};
+function dpos(id){if(DPC[id])return DPC[id];const r=mk(id+1000),g=gatesOf(id);let p,n=0;do{p={x:.15+.7*r(),y:.2+.6*r()}}while(n++<30&&g.some(q=>Math.hypot(q.x-p.x,(q.y-p.y)*.75)<.22));return DPC[id]=p}
+const BC=[[52,112,58],[150,160,72],[140,146,162],[214,182,118],[62,108,96]];
+const nz=(u,v)=>(Math.sin(u*13.1+Math.sin(v*8.3)*1.7)+Math.sin(v*11.7+Math.sin(u*9.1)*1.3)+Math.sin((u+v)*21.3)*.6)/2.6;
+let WT=null;
+function terrain(){
+  if(WT)return WT;
+  const w=144,h=180,o=document.createElement('canvas');o.width=w;o.height=h;
+  const g=o.getContext('2d'),im=g.createImageData(w,h),d=im.data,bid=new Int8Array(w*h).fill(-1);
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    const u=x/w,v=y/h,n=nz(u,v),dx=(u-.5)/.47,dy=(v-.5)/.47,s=1-(Math.abs(dx)**3+Math.abs(dy)**3)+n*.1,i=(y*w+x)*4;
+    const lake=Math.hypot((u-.5)/.13,(v-.52)/.1)<1+n*.25;
+    let r,gg,b;
+    if(s<=0||lake){const t=lake?.6:Math.max(0,1+s/.12);r=22+30*t;gg=60+56*t;b=82+56*t}
+    else{
+      const uw=u+nz(v+.3,u)*.05,vw=v+nz(u+.7,v)*.05;let bi=0,bd=9;
+      for(let k=0;k<5;k++){const q=(uw-SD[k][0])**2+(vw-SD[k][1])**2;if(q<bd){bd=q;bi=k}}
+      bid[y*w+x]=bi;const c=BC[bi],m=n*28+nz(u*2.3,v*2.3)*14;
+      r=c[0]+m;gg=c[1]+m;b=c[2]+m*.7;
+      if(bi==2){const sn=nz(u*3+1,v*3)+(.5-v)*.6;if(sn>.1){const t=Math.min(1,(sn-.1)*4);r+=(236-r)*t;gg+=(240-gg)*t;b+=(248-b)*t}}
+      if(bi==3){const q=Math.sin((u+v*.6)*60)*8;r+=q;gg+=q;b+=q}
+      if(s<.035){r+=45;gg+=40;b+=25}
+    }
+    d[i]=r;d[i+1]=gg;d[i+2]=b;d[i+3]=255;
+  }
+  for(let y=0;y<h-1;y++)for(let x=0;x<w-1;x++){
+    const a=bid[y*w+x];if(a<0)continue;const p=bid[y*w+x+1],q=bid[(y+1)*w+x];
+    if((p>=0&&p!=a)||(q>=0&&q!=a)){const i=(y*w+x)*4;d[i]*=.7;d[i+1]*=.7;d[i+2]*=.7}
+  }
+  g.putImageData(im,0,0);return WT=o;
+}
+function spaced(g,t,x,y,gap){
+  const cs=[...t],ws=cs.map(ch=>g.measureText(ch).width),tot=ws.reduce((a,b)=>a+b,0)+gap*(cs.length-1);let cx=x-tot/2;
+  g.textAlign='left';cs.forEach((ch,k)=>{g.strokeText(ch,cx,y);g.fillText(ch,cx,y);cx+=ws[k]+gap});
+}
+function drawWorld(c){
+  const g=c.getContext('2d'),Wd=c.width,Hd=c.height,pts=WP.map(p=>[p[0]*Wd,p[1]*Hd]),vis=U.d.vis;
+  g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';g.drawImage(terrain(),0,0,Wd,Hd);
+  g.textBaseline='middle';g.lineJoin='round';g.font='bold 34px serif';g.fillStyle='rgba(255,255,255,.5)';g.strokeStyle='rgba(0,0,0,.35)';g.lineWidth=4;
+  BI.forEach((b,i)=>spaced(g,b.n,SD[i][0]*Wd,SD[i][1]*Hd,6));
+  g.lineCap='round';
+  const road=()=>{g.beginPath();EDGES.forEach(([a,b])=>{g.moveTo(pts[a][0],pts[a][1]);g.lineTo(pts[b][0],pts[b][1])})};
+  road();g.strokeStyle='rgba(0,0,0,.35)';g.lineWidth=7;g.stroke();
+  road();g.strokeStyle='rgba(255,240,190,.9)';g.lineWidth=3;g.setLineDash([10,9]);g.stroke();g.setLineDash([]);
+  g.textAlign='center';
+  pts.forEach(([x,y],id)=>{
+    const r=RG[id],b=BI[r.bi],v=vis.includes(id),t=isTown(id),cur=inRun&&CUR.id===id;
+    if(t){g.beginPath();g.arc(x,y,13,0,6.28);g.fillStyle=v?'#ffd23f':'rgba(255,210,63,.45)';g.fill();g.strokeStyle='#14121f';g.lineWidth=3;g.stroke();g.fillStyle='#14121f';g.font='bold 17px sans-serif';g.fillText('⌂',x,y+1)}
+    else{g.beginPath();g.arc(x,y,v?8:5.5,0,6.28);g.fillStyle=v?b.c:'rgba(20,18,31,.75)';g.fill();g.strokeStyle=v?'#fff':'rgba(255,255,255,.45)';g.lineWidth=v?3:2;g.stroke()}
+    if(cur){g.beginPath();g.arc(x,y,20,0,6.28);g.strokeStyle='#ff5d73';g.lineWidth=4;g.stroke();
+      g.beginPath();g.moveTo(x-10,y-46);g.lineTo(x+10,y-46);g.lineTo(x,y-28);g.closePath();g.fillStyle='#ff5d73';g.fill();g.strokeStyle='#fff';g.lineWidth=2;g.stroke()}
+    if(DGN.includes(id)){g.fillStyle='#d070ff';g.strokeStyle='#fff';g.lineWidth=2;g.beginPath();g.moveTo(x+14,y-22);g.lineTo(x+21,y-14);g.lineTo(x+14,y-6);g.lineTo(x+7,y-14);g.closePath();g.fill();g.stroke()}
+    if(v&&!t){g.font='bold 15px sans-serif';g.lineWidth=4;g.strokeStyle='rgba(20,18,31,.85)';g.fillStyle=TC[TIER[id]-1];g.strokeText(ROM[TIER[id]-1],x,y-16);g.fillText(ROM[TIER[id]-1],x,y-16)}
+    if(cur||(t&&v)){g.font='bold 22px sans-serif';g.lineWidth=5;g.strokeStyle='rgba(20,18,31,.85)';g.fillStyle='#fff';g.strokeText(r.n,x,y+(cur?34:28));g.fillText(r.n,x,y+(cur?34:28))}
+  });
+  g.font='bold 20px sans-serif';g.lineWidth=4;g.strokeStyle='rgba(0,0,0,.6)';g.fillStyle='#fff';g.strokeText('N',60,800);g.fillText('N',60,800);
+  g.beginPath();g.moveTo(60,812);g.lineTo(52,845);g.lineTo(60,838);g.lineTo(68,845);g.closePath();g.fillStyle='#fff';g.fill();
+}
+function wmap(){
+  const vis=U.d.vis;let o=0;
+  const chips=BI.map(b=>{const n=b.r.length,c=vis.filter(i=>i>=o&&i<o+n).length;o+=n;return`<span class=wn style="border-color:${b.c};color:${b.c}">${b.n} ${c}/${n}</span>`}).join('');
+  show(`<h1>PULSE大陸</h1><canvas id=wc width=720 height=900 style="width:100%;height:auto;border-radius:8px;border:2px solid #ffffff40;background:#1f4a5c"></canvas><div class=wr style="justify-content:center">${chips}</div><div class=m style="font-size:12px">赤い印 現在地 ／ ⌂ 街 ／ 紫の◆ ダンジョン ／ 暗い点 未踏の地域<br>点線の道は門でつながり、どちらにも行き来できます<br>地域の数字は素材のティア(最初の街から遠いほど高く、敵も強い)</div><button class=card onclick="resume()">戻る</button>`);
+  drawWorld($('wc'));
+}
+function town(i){
+  const b=BI[i],s=U.d.st[i],c=U.d.inv;let rows='';
+  R.forEach((r,k)=>{for(let t=0;t<8;t++)if(c[k][t]||s[k][t])rows+=`<div class=row><b style="color:${r.c}">${r.n} ${ROM[t]}</b><span>所持 ${c[k][t]}</span><span>倉庫 ${s[k][t]}</span><span><button onclick="mv(${i},${k},${t},1,1)">預1</button> <button onclick="mv(${i},${k},${t},1,1e9)">預全</button> <button onclick="mv(${i},${k},${t},-1,1)">出1</button> <button onclick="mv(${i},${k},${t},-1,1e9)">出全</button></span></div>`});
+  show(`<h1 style="color:${b.c}">⌂ ${b.t}</h1><div class=m>この街だけの倉庫です(他の街とは共有されません)<br>鍛冶場で武器も作れます</div>${rows||'<div class=m>預けられる素材がありません</div>'}<button class=card onclick="craftScr(${i})"><b>鍛冶場</b>素材から武器を作る</button><button class=card onclick="resume()">街に戻る</button>`);
+}
+function mv(i,k,t,dir,n){const s=U.d.st[i][k],c=U.d.inv[k],f=dir>0?c:s,o=dir>0?s:c,a=Math.min(n,f[t]);f[t]-=a;o[t]+=a;save();snd(500,.04,'triangle');town(i)}
